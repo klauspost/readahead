@@ -1,4 +1,4 @@
-// package readahead will do async read-ahead from the input reader
+// The readahead package will do asynchronous read-ahead from an input io.Reader
 // and make the data available as an io.Reader.
 //
 // This should be fully transparent, except that once an error
@@ -29,10 +29,12 @@ type reader struct {
 
 // New returns a reader that will asynchronously read from
 // the supplied reader into 4 buffers of 1MB each.
+//
 // It will start reading from the input at once, maybe even before this
 // function has returned.
+//
 // The input can be read from the returned reader.
-// When done use Close to release the buffers and close the supplied input.
+// When done use Close() to release the buffers and close the supplied input.
 func NewReader(rd io.Reader) io.ReadCloser {
 	if rd == nil {
 		return nil

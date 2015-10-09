@@ -129,7 +129,7 @@ func (a *reader) Read(p []byte) (n int, err error) {
 
 	// Copy what we can
 	n = copy(p, a.cur.buffer())
-	a.cur.increment(n)
+	a.cur.inc(n)
 
 	// If at end of buffer, return any error, if present
 	if a.cur.isEmpty() {
@@ -150,7 +150,7 @@ func (a *reader) WriteTo(w io.Writer) (n int64, err error) {
 			return n, err
 		}
 		n2, err := w.Write(a.cur.buffer())
-		a.cur.increment(n2)
+		a.cur.inc(n2)
 		n += int64(n2)
 		if err != nil {
 			return n, err
@@ -175,7 +175,7 @@ func (a *reader) Close() (err error) {
 	}
 }
 
-// Internal buffer
+// Internal buffer representing a single read.
 // If an error is present, it must be returned
 // once all buffer content has been served.
 type buffer struct {
@@ -190,7 +190,7 @@ func newBuffer(size int) *buffer {
 }
 
 // isEmpty returns true is offset is at end of
-// buffer, or
+// buffer, or if the buffer is nil
 func (b *buffer) isEmpty() bool {
 	if b == nil {
 		return true
@@ -217,7 +217,7 @@ func (b *buffer) buffer() []byte {
 	return b.buf[b.offset:]
 }
 
-// increment the offset
-func (b *buffer) increment(n int) {
+// inc will increment the read offset
+func (b *buffer) inc(n int) {
 	b.offset += n
 }

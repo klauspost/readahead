@@ -277,7 +277,7 @@ func TestReaderWriteTo(t *testing.T) {
 	}
 }
 
-func ExampleReader() {
+func Example() {
 	// Buf is our input.
 	buf := bytes.NewBufferString("Example data")
 
@@ -293,5 +293,5 @@ func ExampleReader() {
 	}
 
 	fmt.Println(dst.String())
-	// OUTPUT: Example data
+	// Output: Example data
 }

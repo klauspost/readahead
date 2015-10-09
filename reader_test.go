@@ -9,12 +9,14 @@ import (
 	"testing"
 	"testing/iotest"
 
-	. "github.com/klauspost/readahead"
+	"fmt"
+
+	"github.com/klauspost/readahead"
 )
 
 func TestReader(t *testing.T) {
 	buf := bytes.NewBufferString("Testbuffer")
-	ar, err := NewReaderSize(buf, 4, 10000)
+	ar, err := readahead.NewReaderSize(buf, 4, 10000)
 	if err != nil {
 		t.Fatal("error when creating:", err)
 	}
@@ -52,7 +54,7 @@ func TestReader(t *testing.T) {
 
 	// Test Close without reading everything
 	buf = bytes.NewBuffer(make([]byte, 50000))
-	ar, err = NewReaderSize(buf, 4, 100)
+	ar, err = readahead.NewReaderSize(buf, 4, 100)
 	if err != nil {
 		t.Fatal("error when creating:", err)
 	}
@@ -64,7 +66,7 @@ func TestReader(t *testing.T) {
 
 func TestWriteTo(t *testing.T) {
 	buf := bytes.NewBufferString("Testbuffer")
-	ar, err := NewReaderSize(buf, 4, 10000)
+	ar, err := readahead.NewReaderSize(buf, 4, 10000)
 	if err != nil {
 		t.Fatal("error when creating:", err)
 	}
@@ -94,12 +96,12 @@ func TestWriteTo(t *testing.T) {
 }
 
 func TestNilReader(t *testing.T) {
-	ar := NewReader(nil)
+	ar := readahead.NewReader(nil)
 	if ar != nil {
 		t.Fatalf("expected a nil, got %#v", ar)
 	}
 	buf := bytes.NewBufferString("Testbuffer")
-	ar = NewReader(buf)
+	ar = readahead.NewReader(buf)
 	if ar == nil {
 		t.Fatalf("got nil when expecting object")
 	}
@@ -107,28 +109,28 @@ func TestNilReader(t *testing.T) {
 
 func TestReaderErrors(t *testing.T) {
 	// test nil reader
-	_, err := NewReaderSize(nil, 4, 10000)
+	_, err := readahead.NewReaderSize(nil, 4, 10000)
 	if err == nil {
 		t.Fatal("expected error when creating, but got nil")
 	}
 
 	// invalid buffer number
 	buf := ioutil.NopCloser(bytes.NewBufferString("Testbuffer"))
-	_, err = NewReaderSize(buf, 0, 10000)
+	_, err = readahead.NewReaderSize(buf, 0, 10000)
 	if err == nil {
 		t.Fatal("expected error when creating, but got nil")
 	}
-	_, err = NewReaderSize(buf, -1, 10000)
+	_, err = readahead.NewReaderSize(buf, -1, 10000)
 	if err == nil {
 		t.Fatal("expected error when creating, but got nil")
 	}
 
 	// invalid buffer size
-	_, err = NewReaderSize(buf, 4, 0)
+	_, err = readahead.NewReaderSize(buf, 4, 0)
 	if err == nil {
 		t.Fatal("expected error when creating, but got nil")
 	}
-	_, err = NewReaderSize(buf, 4, -1)
+	_, err = readahead.NewReaderSize(buf, 4, -1)
 	if err == nil {
 		t.Fatal("expected error when creating, but got nil")
 	}
@@ -210,7 +212,7 @@ func TestReaderSizes(t *testing.T) {
 						bufsize := bufsizes[k]
 						read := readmaker.fn(strings.NewReader(text))
 						buf := bufio.NewReaderSize(read, bufsize)
-						ar, _ := NewReaderSize(buf, l, 100)
+						ar, _ := readahead.NewReaderSize(buf, l, 100)
 						s := bufreader.fn(ar)
 						// "timeout" expects the Reader to recover, asyncReader does not.
 						if s != text && readmaker.name != "timeout" {
@@ -251,7 +253,7 @@ func TestReaderWriteTo(t *testing.T) {
 						bufsize := bufsizes[k]
 						read := readmaker.fn(strings.NewReader(text))
 						buf := bufio.NewReaderSize(read, bufsize)
-						ar, _ := NewReaderSize(buf, l, 100)
+						ar, _ := readahead.NewReaderSize(buf, l, 100)
 						dst := &bytes.Buffer{}
 						wt := ar.(io.WriterTo)
 						_, err := wt.WriteTo(dst)
@@ -273,4 +275,23 @@ func TestReaderWriteTo(t *testing.T) {
 			}
 		}
 	}
+}
+
+func ExampleReader() {
+	// Buf is our input.
+	buf := bytes.NewBufferString("Example data")
+
+	// Create a Reader with default settings
+	reader := readahead.NewReader(buf)
+	defer reader.Close()
+
+	// Copy the content to dst
+	var dst = &bytes.Buffer{}
+	_, err := io.Copy(dst, reader)
+	if err != io.EOF {
+		panic("error when reading: " + err.Error())
+	}
+
+	fmt.Println(dst.String())
+	// OUTPUT: Example data
 }

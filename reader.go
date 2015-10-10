@@ -1,3 +1,5 @@
+// Copyright (c) 2015 Klaus Post, released under MIT License. See LICENSE file.
+
 // The readahead package will do asynchronous read-ahead from an input io.Reader
 // and make the data available as an io.Reader.
 //

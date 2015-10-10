@@ -3,7 +3,7 @@ Asynchronous read-ahead for Go readers
 
 This package will allow you to give any reader, and a separate goroutine will perform reads from your upstream reader, so you can request from this reader without delay.
 
-This is helpful for splitting an input stream into concurrent processing, and also helps smooth out *bursts* of input or output.
+This is helpful for splitting an input stream into concurrent processing, and also helps smooth out **bursts** of input or output.
 
 This should be fully transparent, except that once an error has been returned from the Reader, it will not recover.
 
@@ -40,7 +40,7 @@ io.Copy(dst, reader)
 
 You can finetune the read-ahead for your specific use case, and adjust the number of buffers and the size of each buffer.
 
-The default the size of each buffer is 1MB, and there are 4 buffers. Do not make your buffers too small. There is a small overhead for passing buffers between goroutines. Other than that you are free to experiment with buffer sizes.
+The default the size of each buffer is 1MB, and there are 4 buffers. Do not make your buffers too small since there is a small overhead for passing buffers between goroutines. Other than that you are free to experiment with buffer sizes.
 
 # license
 

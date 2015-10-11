@@ -1,7 +1,7 @@
 # readahead
 Asynchronous read-ahead for Go readers
 
-This package will allow you to give any reader, and a separate goroutine will perform reads from your upstream reader, so you can request from this reader without delay.
+This package will allow you to add readhead to any reader. This means a separate goroutine will perform reads from your upstream reader, so you can request from this reader without delay.
 
 This is helpful for splitting an input stream into concurrent processing, and also helps smooth out **bursts** of input or output.
 
@@ -9,6 +9,7 @@ This should be fully transparent, except that once an error has been returned fr
 
 The readahead object also fulfills the [`io.WriterTo`](https://golang.org/pkg/io/#WriterTo) interface, which is likely to speed up `io.Copy` and other code that use the interface.
 
+See an introduction: [An Async Read-ahead Package for Go](https://blog.klauspost.com/an-async-read-ahead-package-for-go/)
 
 [![GoDoc][1]][2] [![Build Status][3]][4]
 

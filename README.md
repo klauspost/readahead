@@ -45,10 +45,12 @@ The default the size of each buffer is 1MB, and there are 4 buffers. Do not make
 
 # contributions
 
-Contributions in terms of new features is limted on this project to:
+On this project contributions in terms of new features is limited to:
 
 * Features that are widely usable and
 * Features that have extensive tests
+
+This package is meant to be simple and stable, so therefore these strict requirements.
 
 The only feature I have considered is supporting the `io.Seeker` interface. I currently do not plan to add it myself, but if you can show a clean and well-tested way to implementing it, I will consider to merge it. If not, I will be happy to link to it.
 

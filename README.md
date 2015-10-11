@@ -21,19 +21,19 @@ The readahead object also fulfills the [`io.WriterTo`](https://golang.org/pkg/io
 
 To get the package use `go get -u github.com/klauspost/readahead`.
 
-Here is a simple example that does file copy. Error checkeing has been omitted for brevity.
+Here is a simple example that does file copy. Error handling has been omitted for brevity.
 ```Go
 input, _ := os.Open("input.txt")
 output, _ := os.Create("output.txt")
 defer input.Close()
 defer output.Close()
 
-// Create a Reader with default settings
-reader := readahead.NewReader(input)
-defer reader.Close()
+// Create a read-ahead Reader with default settings
+ra := readahead.NewReader(input)
+defer ra.Close()
 
 // Copy the content to our output
-io.Copy(dst, reader)
+_, _ = io.Copy(dst, ra)
 ```
 
 # settings
@@ -41,6 +41,15 @@ io.Copy(dst, reader)
 You can finetune the read-ahead for your specific use case, and adjust the number of buffers and the size of each buffer.
 
 The default the size of each buffer is 1MB, and there are 4 buffers. Do not make your buffers too small since there is a small overhead for passing buffers between goroutines. Other than that you are free to experiment with buffer sizes.
+
+# contributions
+
+Contributions in terms of new features is limted on this project to:
+
+* Features that are widely usable and
+* Features that have extensive tests
+
+The only feature I have considered is supporting the `io.Seeker` interface. I currently do not plan to add it myself, but if you can show a clean and well-tested way to implementing it, I will consider to merge it. If not, I will be happy to link to it.
 
 # license
 

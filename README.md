@@ -34,7 +34,7 @@ ra := readahead.NewReader(input)
 defer ra.Close()
 
 // Copy the content to our output
-_, _ = io.Copy(dst, ra)
+_, _ = io.Copy(output, ra)
 ```
 
 # settings

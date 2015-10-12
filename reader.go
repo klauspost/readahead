@@ -36,7 +36,7 @@ type reader struct {
 // function has returned.
 //
 // The input can be read from the returned reader.
-// When done use Close() to release the buffers and close the supplied input.
+// When done use Close() to release the buffers.
 func NewReader(rd io.Reader) io.ReadCloser {
 	if rd == nil {
 		return nil
@@ -169,12 +169,10 @@ func (a *reader) WriteTo(w io.Writer) (n int64, err error) {
 func (a *reader) Close() (err error) {
 	select {
 	case <-a.exited:
-		return nil
-	default:
-		close(a.exit)
+	case a.exit <- struct{}{}:
 		<-a.exited
-		return nil
 	}
+	return nil
 }
 
 // Internal buffer representing a single read.

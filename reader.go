@@ -169,12 +169,10 @@ func (a *reader) WriteTo(w io.Writer) (n int64, err error) {
 func (a *reader) Close() (err error) {
 	select {
 	case <-a.exited:
-		return nil
-	default:
-		close(a.exit)
+	case a.exit <- struct{}{}:
 		<-a.exited
-		return nil
 	}
+	return nil
 }
 
 // Internal buffer

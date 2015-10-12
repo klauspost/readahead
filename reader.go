@@ -36,7 +36,7 @@ type reader struct {
 // function has returned.
 //
 // The input can be read from the returned reader.
-// When done use Close() to release the buffers and close the supplied input.
+// When done use Close() to release the buffers.
 func NewReader(rd io.Reader) io.ReadCloser {
 	if rd == nil {
 		return nil

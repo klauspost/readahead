@@ -3,13 +3,14 @@ package readahead_test
 import (
 	"bufio"
 	"bytes"
+	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"strings"
+	"sync"
 	"testing"
 	"testing/iotest"
-
-	"fmt"
 
 	"github.com/klauspost/readahead"
 )
@@ -170,6 +171,86 @@ func reads(buf io.Reader, m int) string {
 		}
 	}
 	return string(b[0:nb])
+}
+
+type dummyReader struct {
+	readFN func([]byte) (int, error)
+}
+
+func (d dummyReader) Read(dst []byte) (int, error) {
+	return d.readFN(dst)
+}
+
+func TestReaderPanic(t *testing.T) {
+	r := dummyReader{readFN: func(dst []byte) (int, error) {
+		panic("some underlying panic")
+	}}
+	reader := readahead.NewReader(r)
+	defer reader.Close()
+
+	// Copy the content to dst
+	var dst = &bytes.Buffer{}
+	_, err := io.Copy(dst, reader)
+	if err == nil {
+		t.Fatal("Want error, got nil")
+	}
+}
+
+func TestReaderLatePanic(t *testing.T) {
+	var n int
+	var mu sync.Mutex
+	r := dummyReader{readFN: func(dst []byte) (int, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if n >= 10 {
+			panic("some underlying panic")
+		}
+		n++
+		return len(dst), nil
+	}}
+	reader := readahead.NewReader(r)
+	defer reader.Close()
+
+	// Copy the content to dst
+	var dst = &bytes.Buffer{}
+	_, err := io.Copy(dst, reader)
+	if err == nil {
+		t.Fatal("Want error, got nil")
+	}
+	mu.Lock()
+	if n < 10 {
+		t.Fatalf("Want at least 10 calls, got %v", n)
+	}
+	mu.Unlock()
+}
+
+func TestReaderLateError(t *testing.T) {
+	var n int
+	var mu sync.Mutex
+	theErr := errors.New("some error")
+	r := dummyReader{readFN: func(dst []byte) (int, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if n >= 10 {
+			return 0, theErr
+		}
+		n++
+		return len(dst), nil
+	}}
+	reader := readahead.NewReader(r)
+	defer reader.Close()
+
+	// Copy the content to dst
+	var dst = &bytes.Buffer{}
+	_, err := io.Copy(dst, reader)
+	if err != theErr {
+		t.Fatal("Want %#v, got %#v", theErr, err)
+	}
+	mu.Lock()
+	if n < 10 {
+		t.Fatalf("Want at least 10 calls, got %v", n)
+	}
+	mu.Unlock()
 }
 
 type bufReader struct {

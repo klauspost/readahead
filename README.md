@@ -5,7 +5,7 @@ This package will allow you to add readhead to any reader. This means a separate
 
 This is helpful for splitting an input stream into concurrent processing, and also helps smooth out **bursts** of input or output.
 
-This should be fully transparent, except that once an error has been returned from the Reader, it will not recover.
+This should be fully transparent, except that once an error has been returned from the Reader, it will not recover. A panic will be caught and returned as an error.
 
 The readahead object also fulfills the [`io.WriterTo`](https://golang.org/pkg/io/#WriterTo) interface, which is likely to speed up `io.Copy` and other code that use the interface.
 

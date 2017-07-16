@@ -131,7 +131,7 @@ func (a *reader) Read(p []byte) (n int, err error) {
 
 	// Copy what we can
 	n = copy(p, a.cur.buffer())
-	a.cur.increment(n)
+	a.cur.inc(n)
 
 	// If at end of buffer, return any error, if present
 	if a.cur.isEmpty() {
@@ -152,7 +152,7 @@ func (a *reader) WriteTo(w io.Writer) (n int64, err error) {
 			return n, err
 		}
 		n2, err := w.Write(a.cur.buffer())
-		a.cur.increment(n2)
+		a.cur.inc(n2)
 		n += int64(n2)
 		if err != nil {
 			return n, err
@@ -180,7 +180,7 @@ func (a *reader) Close() (err error) {
 	return nil
 }
 
-// Internal buffer
+// Internal buffer representing a single read.
 // If an error is present, it must be returned
 // once all buffer content has been served.
 type buffer struct {
@@ -195,7 +195,7 @@ func newBuffer(size int) *buffer {
 }
 
 // isEmpty returns true is offset is at end of
-// buffer, or
+// buffer, or if the buffer is nil
 func (b *buffer) isEmpty() bool {
 	if b == nil {
 		return true
@@ -209,7 +209,13 @@ func (b *buffer) isEmpty() bool {
 // read into start of the buffer from the supplied reader,
 // resets the offset and updates the size of the buffer.
 // Any error encountered during the read is returned.
-func (b *buffer) read(rd io.Reader) error {
+func (b *buffer) read(rd io.Reader) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic reading: %v", r)
+			b.err = err
+		}
+	}()
 	var n int
 	n, b.err = rd.Read(b.buf[0:b.size])
 	b.buf = b.buf[0:n]
@@ -222,7 +228,7 @@ func (b *buffer) buffer() []byte {
 	return b.buf[b.offset:]
 }
 
-// increment the offset
-func (b *buffer) increment(n int) {
+// inc will increment the read offset
+func (b *buffer) inc(n int) {
 	b.offset += n
 }

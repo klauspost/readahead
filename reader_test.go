@@ -244,7 +244,7 @@ func TestReaderLateError(t *testing.T) {
 	var dst = &bytes.Buffer{}
 	_, err := io.Copy(dst, reader)
 	if err != theErr {
-		t.Fatal("Want %#v, got %#v", theErr, err)
+		t.Fatalf("Want %#v, got %#v", theErr, err)
 	}
 	mu.Lock()
 	if n < 10 {

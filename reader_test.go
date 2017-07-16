@@ -73,7 +73,10 @@ func TestWriteTo(t *testing.T) {
 
 	var dst = &bytes.Buffer{}
 	n, err := io.Copy(dst, ar)
-	if err != io.EOF {
+	// A successful Copy returns err == nil, not err == EOF.
+	// Because Copy is defined to read from src until EOF,
+	// it does not treat an EOF from Read as an error to be reported.
+	if err != nil {
 		t.Fatal("error when reading:", err)
 	}
 	if n != 10 {
@@ -257,7 +260,7 @@ func TestReaderWriteTo(t *testing.T) {
 						dst := &bytes.Buffer{}
 						wt := ar.(io.WriterTo)
 						_, err := wt.WriteTo(dst)
-						if err != nil && err != io.EOF && err != iotest.ErrTimeout {
+						if err != nil && err != iotest.ErrTimeout {
 							t.Fatal("Copy:", err)
 						}
 						s := dst.String()
@@ -288,7 +291,7 @@ func Example() {
 	// Copy the content to dst
 	var dst = &bytes.Buffer{}
 	_, err := io.Copy(dst, reader)
-	if err != io.EOF {
+	if err != nil {
 		panic("error when reading: " + err.Error())
 	}
 

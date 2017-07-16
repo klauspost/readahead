@@ -158,6 +158,11 @@ func (a *reader) WriteTo(w io.Writer) (n int64, err error) {
 			return n, err
 		}
 		if a.cur.err != nil {
+			// io.Writer should return nil if we are at EOF.
+			if a.cur.err == io.EOF {
+				a.err = a.cur.err
+				return n, nil
+			}
 			a.err = a.cur.err
 			return n, a.cur.err
 		}

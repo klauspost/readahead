@@ -20,6 +20,7 @@ import (
 
 type reader struct {
 	in      io.Reader     // Input reader
+	closer  io.Closer     // Optional closer
 	ready   chan *buffer  // Buffers ready to be handed to the reader
 	reuse   chan *buffer  // Buffers to reuse for input reading
 	exit    chan struct{} // Closes when finished
@@ -51,7 +52,30 @@ func NewReader(rd io.Reader) io.ReadCloser {
 	return ret
 }
 
-// NewSize returns a reader with a custom number of buffers and size.
+// New returns a reader that will asynchronously read from
+// the supplied reader into 4 buffers of 1MB each.
+//
+// It will start reading from the input at once, maybe even before this
+// function has returned.
+//
+// The input can be read from the returned reader.
+// When done use Close() to release the buffers,
+// which will also close the supplied closer.
+func NewReadCloser(rd io.ReadCloser) io.ReadCloser {
+	if rd == nil {
+		return nil
+	}
+
+	ret, err := NewReadCloserSize(rd, 4, 1<<20)
+
+	// Should not be possible to trigger from other packages.
+	if err != nil {
+		panic("unexpected error:" + err.Error())
+	}
+	return ret
+}
+
+// NewReaderSize returns a reader with a custom number of buffers and size.
 // buffers is the number of queued buffers and size is the size of each
 // buffer in bytes.
 func NewReaderSize(rd io.Reader, buffers, size int) (io.ReadCloser, error) {
@@ -66,6 +90,24 @@ func NewReaderSize(rd io.Reader, buffers, size int) (io.ReadCloser, error) {
 	}
 	a := &reader{}
 	a.init(rd, buffers, size)
+	return a, nil
+}
+
+// NewReadCloserSize returns a reader with a custom number of buffers and size.
+// buffers is the number of queued buffers and size is the size of each
+// buffer in bytes.
+func NewReadCloserSize(rc io.ReadCloser, buffers, size int) (io.ReadCloser, error) {
+	if size <= 0 {
+		return nil, fmt.Errorf("buffer size too small")
+	}
+	if buffers <= 0 {
+		return nil, fmt.Errorf("number of buffers too small")
+	}
+	if rc == nil {
+		return nil, fmt.Errorf("nil input reader supplied")
+	}
+	a := &reader{closer: rc}
+	a.init(rc, buffers, size)
 	return a, nil
 }
 
@@ -176,6 +218,9 @@ func (a *reader) Close() (err error) {
 	case <-a.exited:
 	case a.exit <- struct{}{}:
 		<-a.exited
+	}
+	if a.closer != nil {
+		return a.closer.Close()
 	}
 	return nil
 }

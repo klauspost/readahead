@@ -220,7 +220,10 @@ func (a *reader) Close() (err error) {
 		<-a.exited
 	}
 	if a.closer != nil {
-		return a.closer.Close()
+		// Only call once
+		c := a.closer
+		a.closer = nil
+		return c.Close()
 	}
 	return nil
 }

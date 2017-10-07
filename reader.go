@@ -209,7 +209,13 @@ func (b *buffer) isEmpty() bool {
 // read into start of the buffer from the supplied reader,
 // resets the offset and updates the size of the buffer.
 // Any error encountered during the read is returned.
-func (b *buffer) read(rd io.Reader) error {
+func (b *buffer) read(rd io.Reader) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic reading: %v", r)
+			b.err = err
+		}
+	}()
 	var n int
 	n, b.err = rd.Read(b.buf[0:b.size])
 	b.buf = b.buf[0:n]

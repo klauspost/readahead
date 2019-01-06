@@ -18,13 +18,20 @@ import (
 	"io"
 )
 
+type ReaderSeekerCloser interface {
+	io.ReadSeeker
+	io.Closer
+}
+
 type reader struct {
 	in      io.Reader     // Input reader
 	closer  io.Closer     // Optional closer
+	seeker	io.Seeker     // Optional seeker
 	ready   chan *buffer  // Buffers ready to be handed to the reader
 	reuse   chan *buffer  // Buffers to reuse for input reading
 	exit    chan struct{} // Closes when finished
 	buffers int           // Number of buffers
+	size	int           // Size of each buffer
 	err     error         // If an error has occurred it is here
 	cur     *buffer       // Current buffer being served
 	exited  chan struct{} // Channel is closed been the async reader shuts down
@@ -75,6 +82,34 @@ func NewReadCloser(rd io.ReadCloser) io.ReadCloser {
 	return ret
 }
 
+func NewReadSeeker(rd io.ReadSeeker) ReaderSeekerCloser {
+	if rd == nil {
+		return nil
+	}
+
+	ret, err := NewReadSeekerSize(rd, 4, 1<<20)
+
+	// Should not be possible to trigger from other packages.
+	if err != nil {
+		panic("unexpected error:" + err.Error())
+	}
+	return ret
+}
+
+func NewReaderSeekerCloser(rd ReaderSeekerCloser) ReaderSeekerCloser {
+	if rd == nil {
+		return nil
+	}
+
+	ret, err := NewReaderSeekerCloserSize(rd, 4, 1<<20)
+
+	// Should not be possible to trigger from other packages.
+	if err != nil {
+		panic("unexpected error:" + err.Error())
+	}
+	return ret
+}
+
 // NewReaderSize returns a reader with a custom number of buffers and size.
 // buffers is the number of queued buffers and size is the size of each
 // buffer in bytes.
@@ -111,6 +146,36 @@ func NewReadCloserSize(rc io.ReadCloser, buffers, size int) (io.ReadCloser, erro
 	return a, nil
 }
 
+func NewReaderSeekerCloserSize(rc ReaderSeekerCloser, buffers, size int) (ReaderSeekerCloser, error) {
+	if size <= 0 {
+		return nil, fmt.Errorf("buffer size too small")
+	}
+	if buffers <= 0 {
+		return nil, fmt.Errorf("number of buffers too small")
+	}
+	if rc == nil {
+		return nil, fmt.Errorf("nil input reader supplied")
+	}
+	a := &reader{closer: rc, seeker: rc}
+	a.init(rc, buffers, size)
+	return a, nil
+}
+
+func NewReadSeekerSize(rc io.ReadSeeker, buffers, size int) (ReaderSeekerCloser, error) {
+	if size <= 0 {
+		return nil, fmt.Errorf("buffer size too small")
+	}
+	if buffers <= 0 {
+		return nil, fmt.Errorf("number of buffers too small")
+	}
+	if rc == nil {
+		return nil, fmt.Errorf("nil input reader supplied")
+	}
+	a := &reader{seeker: rc}
+	a.init(rc, buffers, size)
+	return a, nil
+}
+
 // initialize the reader
 func (a *reader) init(rd io.Reader, buffers, size int) {
 	a.in = rd
@@ -119,6 +184,7 @@ func (a *reader) init(rd io.Reader, buffers, size int) {
 	a.exit = make(chan struct{}, 0)
 	a.exited = make(chan struct{}, 0)
 	a.buffers = buffers
+	a.size = size
 	a.cur = nil
 
 	// Create buffers
@@ -181,6 +247,40 @@ func (a *reader) Read(p []byte) (n int, err error) {
 		return n, a.err
 	}
 	return n, nil
+}
+
+func (a *reader) Seek(offset int64, whence int) (res int64, err error) {
+	if a.seeker == nil {
+		err = fmt.Errorf("seeker not found")
+	} else {
+		//Make sure the async routine is closed
+		select {
+		case <-a.exited:
+		case a.exit <- struct{}{}:
+			<-a.exited
+		}
+		if whence == io.SeekCurrent && !a.cur.isEmpty() {
+			//If need to seek based on current position, take into consideration the bytes we read but the consumer
+			//doesn't know about.
+			offset -= int64(len(a.cur.buf))
+			L:
+			for {
+				select {
+				case buf := <-a.ready:
+					if buf == nil {
+						break L
+					}
+					offset -= int64(len(buf.buf))
+				}
+			}
+		}
+		//Seek the actual Seeker
+		if res, err = a.seeker.Seek(offset, whence); err == nil {
+			//If the seek was successful, reinitalize ourselves (with the the new position).
+			a.init(a.in, a.buffers, a.size)
+		}
+	}
+	return
 }
 
 // WriteTo writes data to w until there's no more data to write or when an error occurs.

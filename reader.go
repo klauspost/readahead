@@ -26,12 +26,12 @@ type ReaderSeekerCloser interface {
 type reader struct {
 	in      io.Reader     // Input reader
 	closer  io.Closer     // Optional closer
-	seeker	io.Seeker     // Optional seeker
+	seeker  io.Seeker     // Optional seeker
 	ready   chan *buffer  // Buffers ready to be handed to the reader
 	reuse   chan *buffer  // Buffers to reuse for input reading
 	exit    chan struct{} // Closes when finished
 	buffers int           // Number of buffers
-	size	int           // Size of each buffer
+	size    int           // Size of each buffer
 	err     error         // If an error has occurred it is here
 	cur     *buffer       // Current buffer being served
 	exited  chan struct{} // Channel is closed been the async reader shuts down
@@ -186,6 +186,7 @@ func (a *reader) init(rd io.Reader, buffers, size int) {
 	a.buffers = buffers
 	a.size = size
 	a.cur = nil
+	a.err = nil
 
 	// Create buffers
 	for i := 0; i < buffers; i++ {
@@ -259,11 +260,14 @@ func (a *reader) Seek(offset int64, whence int) (res int64, err error) {
 		case a.exit <- struct{}{}:
 			<-a.exited
 		}
-		if whence == io.SeekCurrent && !a.cur.isEmpty() {
+		if whence == io.SeekCurrent {
+			a.fill()
 			//If need to seek based on current position, take into consideration the bytes we read but the consumer
 			//doesn't know about.
-			offset -= int64(len(a.cur.buf))
-			L:
+			if !a.cur.isEmpty() {
+				offset -= int64(len(a.cur.buf) - a.cur.offset)
+			}
+		L:
 			for {
 				select {
 				case buf := <-a.ready:
@@ -276,7 +280,7 @@ func (a *reader) Seek(offset int64, whence int) (res int64, err error) {
 		}
 		//Seek the actual Seeker
 		if res, err = a.seeker.Seek(offset, whence); err == nil {
-			//If the seek was successful, reinitalize ourselves (with the the new position).
+			//If the seek was successful, reinitalize ourselves (with the new position).
 			a.init(a.in, a.buffers, a.size)
 		}
 	}

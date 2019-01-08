@@ -5,14 +5,13 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/Xmister/readahead"
 	"io"
 	"io/ioutil"
 	"strings"
 	"sync"
 	"testing"
 	"testing/iotest"
-
-	"github.com/klauspost/readahead"
 )
 
 func TestReader(t *testing.T) {
@@ -62,6 +61,119 @@ func TestReader(t *testing.T) {
 	err = ar.Close()
 	if err != nil {
 		t.Fatal("error when closing:", err)
+	}
+}
+
+type SeekerBuffer struct {
+	*bytes.Buffer
+	pos int64
+	len int64
+}
+
+func (s *SeekerBuffer) Read(p []byte) (n int, err error) {
+	n, err = bytes.NewReader(s.Bytes()[s.pos:]).Read(p)
+	if n > 0 {
+		s.pos += int64(n)
+	}
+	return
+}
+
+func (s *SeekerBuffer) Seek(offset int64, whence int) (res int64, err error) {
+	if offset > s.len {
+		err = fmt.Errorf("wrong offset")
+		return
+	}
+	switch whence {
+	case io.SeekStart:
+		res = offset
+	case io.SeekCurrent:
+		res = s.pos + offset
+	case io.SeekEnd:
+		res = s.len + offset
+	}
+	s.pos = res
+	return
+}
+
+func TestSeeker(t *testing.T) {
+	buf := &SeekerBuffer{
+		Buffer: bytes.NewBufferString("Testbuffer"),
+		len:    10,
+	}
+	ar, err := readahead.NewReadSeekerSize(buf, 4, 10000)
+	if err != nil {
+		t.Fatal("error when creating:", err)
+	}
+
+	var dst = make([]byte, 3)
+	n, err := ar.Read(dst)
+	if err != nil {
+		t.Fatal("error when reading:", err)
+	}
+	if n != 3 {
+		t.Fatal("unexpected length, expected 3, got ", n)
+	}
+
+	pos, err := ar.Seek(1, io.SeekStart)
+	if err != nil {
+		t.Fatal("error when seeking:", err)
+	}
+	if pos != 1 {
+		t.Fatal("unexpected position, expected 1, got ", pos)
+	}
+	n, err = ar.Read(dst)
+	if err != nil {
+		t.Fatal("error when reading:", err)
+	}
+	if n != 3 {
+		t.Fatal("unexpected length, expected 3, got ", n)
+	}
+	if string(dst) != "est" {
+		t.Fatal("unexpected seeked data, expected est, got ", string(dst))
+	}
+
+	pos, err = ar.Seek(1, io.SeekCurrent)
+	if err != nil {
+		t.Fatal("error when seeking:", err)
+	}
+	if pos != 5 {
+		t.Fatal("unexpected position, expected 5, got ", pos)
+	}
+	n, err = ar.Read(dst)
+	if err != nil {
+		t.Fatal("error when reading:", err)
+	}
+	if n != 3 {
+		t.Fatal("unexpected length, expected 3, got ", n)
+	}
+	if string(dst) != "uff" {
+		t.Fatal("unexpected seeked data, expected uff, got ", string(dst))
+	}
+
+	pos, err = ar.Seek(-1, io.SeekEnd)
+	if err != nil {
+		t.Fatal("error when seeking:", err)
+	}
+	if pos != 9 {
+		t.Fatal("unexpected position, expected 9, got ", pos)
+	}
+	n, err = ar.Read(dst)
+	if err != nil {
+		t.Fatal("error when reading:", err)
+	}
+	if n != 1 {
+		t.Fatal("unexpected length, expected 1, got ", n)
+	}
+	if string(dst[:n]) != "r" {
+		t.Fatal("unexpected seeked data, expected r, got ", string(dst[:n]))
+	}
+
+	n, err = ar.Read(dst)
+	if err != io.EOF {
+		t.Fatal("expected io.EOF, got", err)
+	}
+	if n != 0 {
+		t.Fatal("unexpected length, expected 0, got ", n)
 	}
 }
 

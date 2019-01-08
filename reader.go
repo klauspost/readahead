@@ -18,6 +18,13 @@ import (
 	"io"
 )
 
+// Seek whence values.
+const (
+	SeekStart   = 0 // seek relative to the origin of the file
+	SeekCurrent = 1 // seek relative to the current offset
+	SeekEnd     = 2 // seek relative to the end
+)
+
 type ReaderSeekerCloser interface {
 	io.ReadSeeker
 	io.Closer
@@ -260,7 +267,7 @@ func (a *reader) Seek(offset int64, whence int) (res int64, err error) {
 		case a.exit <- struct{}{}:
 			<-a.exited
 		}
-		if whence == io.SeekCurrent {
+		if whence == SeekCurrent {
 			a.fill()
 			//If need to seek based on current position, take into consideration the bytes we read but the consumer
 			//doesn't know about.

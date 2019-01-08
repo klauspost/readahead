@@ -84,11 +84,11 @@ func (s *SeekerBuffer) Seek(offset int64, whence int) (res int64, err error) {
 		return
 	}
 	switch whence {
-	case io.SeekStart:
+	case readahead.SeekStart:
 		res = offset
-	case io.SeekCurrent:
+	case readahead.SeekCurrent:
 		res = s.pos + offset
-	case io.SeekEnd:
+	case readahead.SeekEnd:
 		res = s.len + offset
 	}
 	s.pos = res
@@ -114,7 +114,7 @@ func TestSeeker(t *testing.T) {
 		t.Fatal("unexpected length, expected 3, got ", n)
 	}
 
-	pos, err := ar.Seek(1, io.SeekStart)
+	pos, err := ar.Seek(1, readahead.SeekStart)
 	if err != nil {
 		t.Fatal("error when seeking:", err)
 	}
@@ -132,7 +132,7 @@ func TestSeeker(t *testing.T) {
 		t.Fatal("unexpected seeked data, expected est, got ", string(dst))
 	}
 
-	pos, err = ar.Seek(1, io.SeekCurrent)
+	pos, err = ar.Seek(1, readahead.SeekCurrent)
 	if err != nil {
 		t.Fatal("error when seeking:", err)
 	}
@@ -150,7 +150,7 @@ func TestSeeker(t *testing.T) {
 		t.Fatal("unexpected seeked data, expected uff, got ", string(dst))
 	}
 
-	pos, err = ar.Seek(-1, io.SeekEnd)
+	pos, err = ar.Seek(-1, readahead.SeekEnd)
 	if err != nil {
 		t.Fatal("error when seeking:", err)
 	}

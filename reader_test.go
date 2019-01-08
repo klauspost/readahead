@@ -67,7 +67,6 @@ func TestReader(t *testing.T) {
 type SeekerBuffer struct {
 	*bytes.Buffer
 	pos int64
-	len int64
 }
 
 func (s *SeekerBuffer) Read(p []byte) (n int, err error) {
@@ -79,7 +78,7 @@ func (s *SeekerBuffer) Read(p []byte) (n int, err error) {
 }
 
 func (s *SeekerBuffer) Seek(offset int64, whence int) (res int64, err error) {
-	if offset > s.len {
+	if offset > int64(s.Len()) {
 		err = fmt.Errorf("wrong offset")
 		return
 	}
@@ -89,7 +88,7 @@ func (s *SeekerBuffer) Seek(offset int64, whence int) (res int64, err error) {
 	case readahead.SeekCurrent:
 		res = s.pos + offset
 	case readahead.SeekEnd:
-		res = s.len + offset
+		res = int64(s.Len()) + offset
 	}
 	s.pos = res
 	return
@@ -98,7 +97,6 @@ func (s *SeekerBuffer) Seek(offset int64, whence int) (res int64, err error) {
 func TestSeeker(t *testing.T) {
 	buf := &SeekerBuffer{
 		Buffer: bytes.NewBufferString("Testbuffer"),
-		len:    10,
 	}
 	ar, err := readahead.NewReadSeekerSize(buf, 4, 10000)
 	if err != nil {

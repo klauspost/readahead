@@ -18,22 +18,18 @@ import (
 	"io"
 )
 
-// Seek whence values.
-const (
-	SeekStart   = 0 // seek relative to the origin of the file
-	SeekCurrent = 1 // seek relative to the current offset
-	SeekEnd     = 2 // seek relative to the end
-)
+type seekable struct {
+	*reader
+}
 
-type ReaderSeekerCloser interface {
-	io.ReadSeeker
-	io.Closer
+type ReadSeekCloser interface {
+	io.ReadCloser
+	io.Seeker
 }
 
 type reader struct {
 	in      io.Reader     // Input reader
 	closer  io.Closer     // Optional closer
-	seeker  io.Seeker     // Optional seeker
 	ready   chan *buffer  // Buffers ready to be handed to the reader
 	reuse   chan *buffer  // Buffers to reuse for input reading
 	exit    chan struct{} // Closes when finished
@@ -52,6 +48,8 @@ type reader struct {
 //
 // The input can be read from the returned reader.
 // When done use Close() to release the buffers.
+// If a reader supporting the io.Seeker is given,
+// the returned reader will also support it.
 func NewReader(rd io.Reader) io.ReadCloser {
 	if rd == nil {
 		return nil
@@ -75,6 +73,8 @@ func NewReader(rd io.Reader) io.ReadCloser {
 // The input can be read from the returned reader.
 // When done use Close() to release the buffers,
 // which will also close the supplied closer.
+// If a reader supporting the io.Seeker is given,
+// the returned reader will also support it.
 func NewReadCloser(rd io.ReadCloser) io.ReadCloser {
 	if rd == nil {
 		return nil
@@ -89,38 +89,39 @@ func NewReadCloser(rd io.ReadCloser) io.ReadCloser {
 	return ret
 }
 
-func NewReadSeeker(rd io.ReadSeeker) ReaderSeekerCloser {
-	if rd == nil {
-		return nil
-	}
-
-	ret, err := NewReadSeekerSize(rd, 4, 1<<20)
-
-	// Should not be possible to trigger from other packages.
-	if err != nil {
-		panic("unexpected error:" + err.Error())
-	}
-	return ret
+// New returns a reader that will asynchronously read from
+// the supplied reader into 4 buffers of 1MB each.
+//
+// It will start reading from the input at once, maybe even before this
+// function has returned.
+//
+// The input can be read and seeked from the returned reader.
+// When done use Close() to release the buffers.
+func NewReadSeeker(rd io.ReadSeeker) ReadSeekCloser {
+	//Not checking for result as the input interface guarantees it's seekable
+	res, _ := NewReader(rd).(ReadSeekCloser)
+	return res
 }
 
-func NewReaderSeekerCloser(rd ReaderSeekerCloser) ReaderSeekerCloser {
-	if rd == nil {
-		return nil
-	}
-
-	ret, err := NewReaderSeekerCloserSize(rd, 4, 1<<20)
-
-	// Should not be possible to trigger from other packages.
-	if err != nil {
-		panic("unexpected error:" + err.Error())
-	}
-	return ret
+// New returns a reader that will asynchronously read from
+// the supplied reader into 4 buffers of 1MB each.
+//
+// It will start reading from the input at once, maybe even before this
+// function has returned.
+//
+// The input can be read and seeked from the returned reader.
+// When done use Close() to release the buffers,
+// which will also close the supplied closer.
+func NewReadSeekCloser(rd ReadSeekCloser) ReadSeekCloser {
+	//Not checking for result as the input interface guarantees it's seekable
+	res, _ := NewReadCloser(rd).(ReadSeekCloser)
+	return res
 }
 
 // NewReaderSize returns a reader with a custom number of buffers and size.
 // buffers is the number of queued buffers and size is the size of each
 // buffer in bytes.
-func NewReaderSize(rd io.Reader, buffers, size int) (io.ReadCloser, error) {
+func NewReaderSize(rd io.Reader, buffers, size int) (res io.ReadCloser, err error) {
 	if size <= 0 {
 		return nil, fmt.Errorf("buffer size too small")
 	}
@@ -131,14 +132,19 @@ func NewReaderSize(rd io.Reader, buffers, size int) (io.ReadCloser, error) {
 		return nil, fmt.Errorf("nil input reader supplied")
 	}
 	a := &reader{}
+	if _, ok := rd.(io.Seeker); ok {
+		res = &seekable{a}
+	} else {
+		res = a
+	}
 	a.init(rd, buffers, size)
-	return a, nil
+	return
 }
 
 // NewReadCloserSize returns a reader with a custom number of buffers and size.
 // buffers is the number of queued buffers and size is the size of each
 // buffer in bytes.
-func NewReadCloserSize(rc io.ReadCloser, buffers, size int) (io.ReadCloser, error) {
+func NewReadCloserSize(rc io.ReadCloser, buffers, size int) (res io.ReadCloser, err error) {
 	if size <= 0 {
 		return nil, fmt.Errorf("buffer size too small")
 	}
@@ -149,38 +155,39 @@ func NewReadCloserSize(rc io.ReadCloser, buffers, size int) (io.ReadCloser, erro
 		return nil, fmt.Errorf("nil input reader supplied")
 	}
 	a := &reader{closer: rc}
+	if _, ok := rc.(io.Seeker); ok {
+		res = &seekable{a}
+	} else {
+		res = a
+	}
 	a.init(rc, buffers, size)
-	return a, nil
+	return
 }
 
-func NewReaderSeekerCloserSize(rc ReaderSeekerCloser, buffers, size int) (ReaderSeekerCloser, error) {
-	if size <= 0 {
-		return nil, fmt.Errorf("buffer size too small")
+// NewReadSeekerSize returns a reader with a custom number of buffers and size.
+// buffers is the number of queued buffers and size is the size of each
+// buffer in bytes.
+func NewReadSeekerSize(rd io.ReadSeeker, buffers, size int) (res ReadSeekCloser, err error) {
+	reader, err := NewReaderSize(rd, buffers, size)
+	if err != nil {
+		return nil, err
 	}
-	if buffers <= 0 {
-		return nil, fmt.Errorf("number of buffers too small")
-	}
-	if rc == nil {
-		return nil, fmt.Errorf("nil input reader supplied")
-	}
-	a := &reader{closer: rc, seeker: rc}
-	a.init(rc, buffers, size)
-	return a, nil
+	//Not checking for result as the input interface guarantees it's seekable
+	res, _ = reader.(ReadSeekCloser)
+	return
 }
 
-func NewReadSeekerSize(rc io.ReadSeeker, buffers, size int) (ReaderSeekerCloser, error) {
-	if size <= 0 {
-		return nil, fmt.Errorf("buffer size too small")
+// NewReadSeekCloserSize returns a reader with a custom number of buffers and size.
+// buffers is the number of queued buffers and size is the size of each
+// buffer in bytes.
+func NewReadSeekCloserSize(rd ReadSeekCloser, buffers, size int) (res ReadSeekCloser, err error) {
+	reader, err := NewReadCloserSize(rd, buffers, size)
+	if err != nil {
+		return nil, err
 	}
-	if buffers <= 0 {
-		return nil, fmt.Errorf("number of buffers too small")
-	}
-	if rc == nil {
-		return nil, fmt.Errorf("nil input reader supplied")
-	}
-	a := &reader{seeker: rc}
-	a.init(rc, buffers, size)
-	return a, nil
+	//Not checking for result as the input interface guarantees it's seekable
+	res, _ = reader.(ReadSeekCloser)
+	return
 }
 
 // initialize the reader
@@ -257,39 +264,39 @@ func (a *reader) Read(p []byte) (n int, err error) {
 	return n, nil
 }
 
-func (a *reader) Seek(offset int64, whence int) (res int64, err error) {
-	if a.seeker == nil {
-		err = fmt.Errorf("seeker not found")
-	} else {
-		//Make sure the async routine is closed
-		select {
-		case <-a.exited:
-		case a.exit <- struct{}{}:
-			<-a.exited
+func (a *seekable) Seek(offset int64, whence int) (res int64, err error) {
+	//Not checking the result as seekable receiver guarantees it to be assertable
+	seeker, _ := a.in.(io.Seeker)
+	//Make sure the async routine is closed
+	select {
+	case <-a.exited:
+	case a.exit <- struct{}{}:
+		<-a.exited
+	}
+	if whence == io.SeekCurrent {
+		a.fill()
+		//If need to seek based on current position, take into consideration the bytes we read but the consumer
+		//doesn't know about.
+		if !a.cur.isEmpty() {
+			offset -= int64(len(a.cur.buf) - a.cur.offset)
 		}
-		if whence == SeekCurrent {
-			a.fill()
-			//If need to seek based on current position, take into consideration the bytes we read but the consumer
-			//doesn't know about.
-			if !a.cur.isEmpty() {
-				offset -= int64(len(a.cur.buf) - a.cur.offset)
-			}
-		L:
-			for {
-				select {
-				case buf := <-a.ready:
-					if buf == nil {
-						break L
-					}
-					offset -= int64(len(buf.buf))
+	L:
+		for {
+			select {
+			case buf := <-a.ready:
+				if buf == nil {
+					break L
 				}
+				offset -= int64(len(buf.buf))
+			default:
+				break L
 			}
 		}
-		//Seek the actual Seeker
-		if res, err = a.seeker.Seek(offset, whence); err == nil {
-			//If the seek was successful, reinitalize ourselves (with the new position).
-			a.init(a.in, a.buffers, a.size)
-		}
+	}
+	//Seek the actual Seeker
+	if res, err = seeker.Seek(offset, whence); err == nil {
+		//If the seek was successful, reinitalize ourselves (with the new position).
+		a.init(a.in, a.buffers, a.size)
 	}
 	return
 }

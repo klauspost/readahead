@@ -274,22 +274,13 @@ func (a *seekable) Seek(offset int64, whence int) (res int64, err error) {
 		<-a.exited
 	}
 	if whence == io.SeekCurrent {
-		a.fill()
 		//If need to seek based on current position, take into consideration the bytes we read but the consumer
-		//doesn't know about.
-		if !a.cur.isEmpty() {
-			offset -= int64(len(a.cur.buf) - a.cur.offset)
-		}
-	L:
-		for {
-			select {
-			case buf := <-a.ready:
-				if buf == nil {
-					break L
-				}
-				offset -= int64(len(buf.buf))
-			default:
-				break L
+		//doesn't know about
+		err = nil
+		for !a.cur.isEmpty() {
+			if err = a.fill(); err == nil {
+				offset -= int64(len(a.cur.buffer()))
+				a.cur.buf=nil
 			}
 		}
 	}

@@ -96,27 +96,23 @@ func (s *SeekerBuffer) Seek(offset int64, whence int) (res int64, err error) {
 
 func TestSeeker(t *testing.T) {
 	testBytes := []byte("Testbuffer")
-	newControl := func(i int) io.ReadCloser {
+	newControl := func(i int) io.Reader {
 		buf := bytes.NewBuffer(testBytes)
-		for j := 0; j < i-1; j++ {
+		for j := 0; j < i*100-1; j++ {
 			buf.Write(testBytes)
 		}
-		res, err := readahead.NewReaderSize(buf, i, 1000*i)
-		if err != nil {
-			t.Fatal("failed to create control reader")
-		}
-		return res
+		return buf
 	}
-	for i := 1; i <= 10; i++ {
-		length := len(testBytes) * i
+	for i := 1; i <= 100; i++ {
+		length := len(testBytes) * i*100
 		buf := &SeekerBuffer{
 			Buffer: bytes.NewBuffer(testBytes),
 		}
-		for j := 0; j < i-1; j++ {
+		for j := 0; j < i*100-1; j++ {
 			buf.Write(testBytes)
 		}
 		control := newControl(i)
-		ar, err := readahead.NewReadSeekerSize(buf, i, 1000*i)
+		ar, err := readahead.NewReadSeekerSize(buf, i, 11*i)
 		if _, ok := control.(io.Seeker); ok {
 			t.Fatal("created reader implements seeking without underlying reader support")
 		}
@@ -159,14 +155,14 @@ func TestSeeker(t *testing.T) {
 			t.Fatal("seeker and control reader mismatch")
 		}
 
-		pos, err = ar.Seek(1, io.SeekCurrent)
+		pos, err = ar.Seek(int64(i), io.SeekCurrent)
 		if err != nil {
 			t.Fatal("error when seeking:", err)
 		}
-		if pos != int64(dstSize+2) {
-			t.Fatal("unexpected position, expected ", dstSize+2, ", got ", pos)
+		if pos != int64(dstSize+i+1) {
+			t.Fatal("unexpected position, expected ", dstSize+i, ", got ", pos)
 		}
-		control.Read(make([]byte, 1)) //Emulate seeking to offset 1 from current pos
+		control.Read(make([]byte, int64(i))) //Emulate seeking to offset 1 from current pos
 		control.Read(controlDst)
 		n, err = ar.Read(dst)
 		if err != nil {

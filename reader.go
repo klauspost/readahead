@@ -211,13 +211,13 @@ func (a *reader) init(rd io.Reader, buffers, size int) {
 	go func() {
 		// Ensure that when we exit this is signalled.
 		defer close(a.exited)
+		defer close(a.ready)
 		for {
 			select {
 			case b := <-a.reuse:
 				err := b.read(a.in)
 				a.ready <- b
 				if err != nil {
-					close(a.ready)
 					return
 				}
 			case <-a.exit:
@@ -277,10 +277,10 @@ func (a *seekable) Seek(offset int64, whence int) (res int64, err error) {
 		//If need to seek based on current position, take into consideration the bytes we read but the consumer
 		//doesn't know about
 		err = nil
-		for !a.cur.isEmpty() {
-			if err = a.fill(); err == nil {
+		for a.cur != nil {
+			if err = a.fill(); err == nil && a.cur != nil {
 				offset -= int64(len(a.cur.buffer()))
-				a.cur.buf=nil
+				a.cur.offset=len(a.cur.buf)
 			}
 		}
 	}

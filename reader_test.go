@@ -104,7 +104,7 @@ func TestSeeker(t *testing.T) {
 		return buf
 	}
 	for i := 1; i <= 100; i++ {
-		length := len(testBytes) * i*100
+		length := len(testBytes) * i * 100
 		buf := &SeekerBuffer{
 			Buffer: bytes.NewBuffer(testBytes),
 		}

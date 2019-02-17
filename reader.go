@@ -280,7 +280,7 @@ func (a *seekable) Seek(offset int64, whence int) (res int64, err error) {
 		for a.cur != nil {
 			if err = a.fill(); err == nil && a.cur != nil {
 				offset -= int64(len(a.cur.buffer()))
-				a.cur.offset=len(a.cur.buf)
+				a.cur.offset = len(a.cur.buf)
 			}
 		}
 	}

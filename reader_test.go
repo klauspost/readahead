@@ -5,14 +5,13 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/klauspost/readahead"
 	"io"
 	"io/ioutil"
 	"strings"
 	"sync"
 	"testing"
 	"testing/iotest"
-
-	"github.com/klauspost/readahead"
 )
 
 func TestReader(t *testing.T) {
@@ -62,6 +61,148 @@ func TestReader(t *testing.T) {
 	err = ar.Close()
 	if err != nil {
 		t.Fatal("error when closing:", err)
+	}
+}
+
+type SeekerBuffer struct {
+	*bytes.Buffer
+	pos int64
+}
+
+func (s *SeekerBuffer) Read(p []byte) (n int, err error) {
+	n, err = bytes.NewReader(s.Bytes()[s.pos:]).Read(p)
+	if n > 0 {
+		s.pos += int64(n)
+	}
+	return
+}
+
+func (s *SeekerBuffer) Seek(offset int64, whence int) (res int64, err error) {
+	if offset > int64(s.Len()) {
+		err = fmt.Errorf("wrong offset")
+		return
+	}
+	switch whence {
+	case io.SeekStart:
+		res = offset
+	case io.SeekCurrent:
+		res = s.pos + offset
+	case io.SeekEnd:
+		res = int64(s.Len()) + offset
+	}
+	s.pos = res
+	return
+}
+
+func TestSeeker(t *testing.T) {
+	testBytes := []byte("Testbuffer")
+	newControl := func(i int) io.Reader {
+		buf := bytes.NewBuffer(testBytes)
+		for j := 0; j < i*100-1; j++ {
+			buf.Write(testBytes)
+		}
+		return buf
+	}
+	for i := 1; i <= 100; i++ {
+		length := len(testBytes) * i * 100
+		buf := &SeekerBuffer{
+			Buffer: bytes.NewBuffer(testBytes),
+		}
+		for j := 0; j < i*100-1; j++ {
+			buf.Write(testBytes)
+		}
+		control := newControl(i)
+		ar, err := readahead.NewReadSeekerSize(buf, i, 11*i)
+		if _, ok := control.(io.Seeker); ok {
+			t.Fatal("created reader implements seeking without underlying reader support")
+		}
+		if err != nil {
+			t.Fatal("error when creating:", err)
+		}
+		dstSize := 3 * i
+		dst := make([]byte, dstSize)
+		controlDst := make([]byte, dstSize)
+		control.Read(controlDst)
+		n, err := ar.Read(dst)
+		if err != nil {
+			t.Fatal("error when reading:", err)
+		}
+		if n != dstSize {
+			t.Fatal("unexpected length, expected ", dstSize, ", got ", n)
+		}
+		if string(dst) != string(controlDst) {
+			t.Fatal("seeker and control reader mismatch")
+		}
+
+		pos, err := ar.Seek(1, io.SeekStart)
+		if err != nil {
+			t.Fatal("error when seeking:", err)
+		}
+		if pos != 1 {
+			t.Fatal("unexpected position, expected 1, got ", pos)
+		}
+		control = newControl(i)
+		control.Read(make([]byte, 1)) //Emulate seeking to offset 1 from beginning
+		control.Read(controlDst)
+		n, err = ar.Read(dst)
+		if err != nil {
+			t.Fatal("error when reading:", err)
+		}
+		if n != dstSize {
+			t.Fatal("unexpected length, expected ", dstSize, ", got ", n)
+		}
+		if string(dst) != string(controlDst) {
+			t.Fatal("seeker and control reader mismatch")
+		}
+
+		pos, err = ar.Seek(int64(i), io.SeekCurrent)
+		if err != nil {
+			t.Fatal("error when seeking:", err)
+		}
+		if pos != int64(dstSize+i+1) {
+			t.Fatal("unexpected position, expected ", dstSize+i, ", got ", pos)
+		}
+		control.Read(make([]byte, int64(i))) //Emulate seeking to offset 1 from current pos
+		control.Read(controlDst)
+		n, err = ar.Read(dst)
+		if err != nil {
+			t.Fatal("error when reading:", err)
+		}
+		if n != dstSize {
+			t.Fatal("unexpected length, expected ", dstSize, ", got ", n)
+		}
+		if string(dst) != string(controlDst) {
+			t.Fatal("seeker and control reader mismatch")
+		}
+
+		control = newControl(i)
+		pos, err = ar.Seek(-1, io.SeekEnd)
+		if err != nil {
+			t.Fatal("error when seeking:", err)
+		}
+		if pos != int64(length-1) {
+			t.Fatal("unexpected position, expected ", length-1, ", got ", pos)
+		}
+		control.Read(make([]byte, length-1)) //Emulate seeking to offset -1 from the end
+		control.Read(controlDst)
+		n, err = ar.Read(dst)
+		if err != nil {
+			t.Fatal("error when reading:", err)
+		}
+		if n != 1 {
+			t.Fatal("unexpected length, expected 1, got ", n)
+		}
+		if string(dst[:n]) != string(controlDst[:n]) {
+			t.Fatal("seeker and control reader mismatch")
+		}
+
+		n, err = ar.Read(dst)
+		if err != io.EOF {
+			t.Fatal("expected io.EOF, got", err)
+		}
+		if n != 0 {
+			t.Fatal("unexpected length, expected 0, got ", n)
+		}
 	}
 }
 

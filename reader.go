@@ -14,6 +14,7 @@
 package readahead
 
 import (
+	"errors"
 	"fmt"
 	"io"
 )
@@ -237,6 +238,9 @@ func (a *reader) fill() (err error) {
 		}
 		b, ok := <-a.ready
 		if !ok {
+			if a.err == nil {
+				a.err = errors.New("readahead: read after Close")
+			}
 			return a.err
 		}
 		a.cur = b

@@ -5,13 +5,14 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/klauspost/readahead"
 	"io"
 	"io/ioutil"
 	"strings"
 	"sync"
 	"testing"
 	"testing/iotest"
+
+	"github.com/klauspost/readahead"
 )
 
 func TestReader(t *testing.T) {
@@ -61,6 +62,12 @@ func TestReader(t *testing.T) {
 	err = ar.Close()
 	if err != nil {
 		t.Fatal("error when closing:", err)
+	}
+
+	// Test Read after close
+	_, err = ar.Read(make([]byte, 50000))
+	if err == nil {
+		t.Fatal("want error when closing, got:", err)
 	}
 }
 

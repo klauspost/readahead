@@ -334,6 +334,11 @@ func TestWriteTo(t *testing.T) {
 	if err != nil {
 		t.Fatal("error when closing:", err)
 	}
+	// Test Read after close
+	_, err = io.Copy(dst, ar)
+	if err == nil {
+		t.Fatal("want error when closing, got:", err)
+	}
 }
 
 func TestNilReader(t *testing.T) {

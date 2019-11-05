@@ -250,6 +250,9 @@ func (a *reader) fill() (err error) {
 
 // Read will return the next available data.
 func (a *reader) Read(p []byte) (n int, err error) {
+	if a.err != nil {
+		return 0, a.err
+	}
 	// Swap buffer and maybe return error
 	err = a.fill()
 	if err != nil {
@@ -300,6 +303,9 @@ func (a *seekable) Seek(offset int64, whence int) (res int64, err error) {
 // The return value n is the number of bytes written.
 // Any error encountered during the write is also returned.
 func (a *reader) WriteTo(w io.Writer) (n int64, err error) {
+	if a.err != nil {
+		return 0, a.err
+	}
 	n = 0
 	for {
 		err = a.fill()
@@ -338,6 +344,7 @@ func (a *reader) Close() (err error) {
 		a.closer = nil
 		return c.Close()
 	}
+	a.err = errors.New("readahead: read after Close")
 	return nil
 }
 

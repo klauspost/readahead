@@ -23,9 +23,18 @@ type seekable struct {
 	*reader
 }
 
+type readerat struct {
+	io.ReaderAt
+}
+
 type ReadSeekCloser interface {
 	io.ReadCloser
 	io.Seeker
+}
+
+type ReadAtCloser interface {
+	io.ReadCloser
+	io.ReaderAt
 }
 
 type reader struct {
@@ -116,6 +125,21 @@ func NewReadSeeker(rd io.ReadSeeker) ReadSeekCloser {
 func NewReadSeekCloser(rd ReadSeekCloser) ReadSeekCloser {
 	//Not checking for result as the input interface guarantees it's seekable
 	res, _ := NewReadCloser(rd).(ReadSeekCloser)
+	return res
+}
+
+// New returns a reader that will asynchronously read from
+// the supplied reader into 4 buffers of 1MB each.
+//
+// It will start reading from the input at once, maybe even before this
+// function has returned.
+//
+// The input can be read and seeked from the returned reader.
+// When done use Close() to release the buffers,
+// which will also close the supplied closer.
+func NewReaderAt(rd io.ReaderAt) ReadAtCloser {
+	//Not checking for result as the input interface guarantees it's seekable
+	res, _ := NewReader(newReaderAt(rd)).(ReadAtCloser)
 	return res
 }
 
@@ -271,6 +295,13 @@ func (a *reader) Read(p []byte) (n int, err error) {
 	return n, nil
 }
 
+func (a *seekable) ReadAt(p []byte, off int64) (n int, err error) {
+	if _, err := a.Seek(off, io.SeekStart); err != nil {
+		return 0, err
+	}
+	return a.Read(p)
+}
+
 func (a *seekable) Seek(offset int64, whence int) (res int64, err error) {
 	//Not checking the result as seekable receiver guarantees it to be assertable
 	seeker, _ := a.in.(io.Seeker)
@@ -346,6 +377,14 @@ func (a *reader) Close() (err error) {
 	}
 	a.err = errors.New("readahead: read after Close")
 	return nil
+}
+
+func newReaderAt(rd io.ReaderAt) *readerat {
+	return &readerat{ReaderAt: rd}
+}
+
+func (a *readerat) Read(p []byte) (n int, err error) {
+	return a.ReaderAt.ReadAt(p, 0)
 }
 
 // Internal buffer representing a single read.

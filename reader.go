@@ -31,14 +31,14 @@ type ReadSeekCloser interface {
 type reader struct {
 	in      io.Reader     // Input reader
 	closer  io.Closer     // Optional closer
+	err     error         // If an error has occurred it is here
 	ready   chan *buffer  // Buffers ready to be handed to the reader
 	reuse   chan *buffer  // Buffers to reuse for input reading
 	exit    chan struct{} // Closes when finished
-	buffers int           // Number of buffers
-	size    int           // Size of each buffer
-	err     error         // If an error has occurred it is here
 	cur     *buffer       // Current buffer being served
 	exited  chan struct{} // Channel is closed been the async reader shuts down
+	size    int           // Size of each buffer
+	buffers int           // Number of buffers
 }
 
 // New returns a reader that will asynchronously read from
@@ -352,8 +352,8 @@ func (a *reader) Close() (err error) {
 // If an error is present, it must be returned
 // once all buffer content has been served.
 type buffer struct {
-	buf    []byte
 	err    error
+	buf    []byte
 	offset int
 	size   int
 }

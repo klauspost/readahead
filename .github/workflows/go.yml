@@ -27,8 +27,8 @@ jobs:
     - name: Test
       run: go test ./...
 
-    - name: Test Noasm
-      run: go test -tags=noasm ./...
+    - name: Test Race
+      run: go test -race -cpu=1,4,8 ./...
       
   build-special:
     env:
@@ -47,4 +47,4 @@ jobs:
       run: diff <(gofmt -d .) <(printf "")
 
     - name: Test 386
-      run: GOOS=linux GOARCH=386 go test -short ./...
+      run: GOOS=linux GOARCH=386 go test ./...

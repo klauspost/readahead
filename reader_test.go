@@ -523,7 +523,7 @@ func TestReaderSizes(t *testing.T) {
 	for i := 0; i < len(texts)-1; i++ {
 		texts[i] = str + "\n"
 		all += texts[i]
-		str += string(i%26 + 'a')
+		str += string(byte(i%26) + 'a')
 	}
 	texts[len(texts)-1] = all
 
@@ -564,7 +564,7 @@ func TestReaderWriteTo(t *testing.T) {
 	for i := 0; i < len(texts)-1; i++ {
 		texts[i] = str + "\n"
 		all += texts[i]
-		str += string(i%26 + 'a')
+		str += string(byte(i%26) + 'a')
 	}
 	texts[len(texts)-1] = all
 

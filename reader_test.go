@@ -71,6 +71,73 @@ func TestReader(t *testing.T) {
 	}
 }
 
+func makeBuffers(n, size int) [][]byte {
+	x := make([]byte, n*size)
+	bufs := make([][]byte, n)
+	for i := range bufs {
+		bufs[i] = x[i*size : (i+1)*size : (i+1)*size]
+	}
+	return bufs
+}
+
+func TestReaderBuffer(t *testing.T) {
+	buf := bytes.NewBufferString("Testbuffer")
+
+	ar, err := readahead.NewReaderBuffer(buf, makeBuffers(4, 10000))
+	if err != nil {
+		t.Fatal("error when creating:", err)
+	}
+
+	var dst = make([]byte, 100)
+	n, err := ar.Read(dst)
+	if err != nil {
+		t.Fatal("error when reading:", err)
+	}
+	if n != 10 {
+		t.Fatal("unexpected length, expected 10, got ", n)
+	}
+
+	n, err = ar.Read(dst)
+	if err != io.EOF {
+		t.Fatal("expected io.EOF, got", err)
+	}
+	if n != 0 {
+		t.Fatal("unexpected length, expected 0, got ", n)
+	}
+
+	// Test read after error
+	n, err = ar.Read(dst)
+	if err != io.EOF {
+		t.Fatal("expected io.EOF, got", err)
+	}
+	if n != 0 {
+		t.Fatal("unexpected length, expected 0, got ", n)
+	}
+
+	err = ar.Close()
+	if err != nil {
+		t.Fatal("error when closing:", err)
+	}
+
+	// Test Close without reading everything
+	buf = bytes.NewBuffer(make([]byte, 50000))
+
+	ar, err = readahead.NewReaderBuffer(buf, makeBuffers(4, 100))
+	if err != nil {
+		t.Fatal("error when creating:", err)
+	}
+	err = ar.Close()
+	if err != nil {
+		t.Fatal("error when closing:", err)
+	}
+
+	// Test Read after close
+	_, err = ar.Read(make([]byte, 50000))
+	if err == nil {
+		t.Fatal("want error when closing, got:", err)
+	}
+}
+
 type SeekerBuffer struct {
 	*bytes.Buffer
 	pos int64
@@ -289,6 +356,84 @@ func TestReadCloser(t *testing.T) {
 	// Test multiple closes
 	cl = &testCloser{Reader: buf}
 	ar = readahead.NewReadCloser(cl)
+	err = ar.Close()
+	if err != nil {
+		t.Fatal("error when closing:", err)
+	}
+	err = ar.Close()
+	if err != nil {
+		t.Fatal("error when closing:", err)
+	}
+	if cl.closed != 1 {
+		t.Fatal("want close count 1, got:", cl.closed)
+	}
+}
+
+func TestReadCloserBuffer(t *testing.T) {
+	buf := bytes.NewBufferString("Testbuffer")
+	cl := &testCloser{Reader: buf}
+	ar, err := readahead.NewReadCloserBuffer(cl, makeBuffers(4, 10000))
+	if err != nil {
+		t.Fatal("error when creating:", err)
+	}
+
+	var dst = make([]byte, 100)
+	n, err := ar.Read(dst)
+	if err != nil {
+		t.Fatal("error when reading:", err)
+	}
+	if n != 10 {
+		t.Fatal("unexpected length, expected 10, got ", n)
+	}
+
+	n, err = ar.Read(dst)
+	if err != io.EOF {
+		t.Fatal("expected io.EOF, got", err)
+	}
+	if n != 0 {
+		t.Fatal("unexpected length, expected 0, got ", n)
+	}
+
+	// Test read after error
+	n, err = ar.Read(dst)
+	if err != io.EOF {
+		t.Fatal("expected io.EOF, got", err)
+	}
+	if n != 0 {
+		t.Fatal("unexpected length, expected 0, got ", n)
+	}
+
+	err = ar.Close()
+	if err != nil {
+		t.Fatal("error when closing:", err)
+	}
+	if cl.closed != 1 {
+		t.Fatal("want close count 1, got:", cl.closed)
+	}
+	// Test Close without reading everything
+	buf = bytes.NewBuffer(make([]byte, 50000))
+	cl = &testCloser{Reader: buf}
+	ar, _ = readahead.NewReadCloserBuffer(cl, makeBuffers(4, 1<<20))
+	err = ar.Close()
+	if err != nil {
+		t.Fatal("error when closing:", err)
+	}
+	if cl.closed != 1 {
+		t.Fatal("want close count 1, got:", cl.closed)
+	}
+	// Test error forwarding
+	cl = &testCloser{Reader: buf, onClose: errors.New("an error")}
+	ar, _ = readahead.NewReadCloserBuffer(cl, makeBuffers(4, 1<<20))
+	err = ar.Close()
+	if err != cl.onClose {
+		t.Fatal("want error when closing, got", err)
+	}
+	if cl.closed != 1 {
+		t.Fatal("want close count 1, got:", cl.closed)
+	}
+	// Test multiple closes
+	cl = &testCloser{Reader: buf}
+	ar, _ = readahead.NewReadCloserBuffer(cl, makeBuffers(4, 1<<20))
 	err = ar.Close()
 	if err != nil {
 		t.Fatal("error when closing:", err)

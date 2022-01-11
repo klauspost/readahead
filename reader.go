@@ -351,9 +351,14 @@ func (a *reader) Read(p []byte) (n int, err error) {
 	n = copy(p, a.cur.buffer())
 	a.cur.inc(n)
 
-	// If at end of buffer, return any error, if present
 	if a.cur.isEmpty() {
-		a.err = a.cur.err
+		// Return current, so a fetch can start.
+		if a.cur != nil {
+			// If at end of buffer, return any error, if present
+			a.err = a.cur.err
+			a.reuse <- a.cur
+			a.cur = nil
+		}
 		return n, a.err
 	}
 	return n, nil

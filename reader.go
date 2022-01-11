@@ -312,10 +312,25 @@ func (a *reader) initBuffers(rd io.Reader, buffers [][]byte, size int) {
 		// Ensure that when we exit this is signalled.
 		defer close(a.exited)
 		defer close(a.ready)
+		var atEOF bool
 		for {
 			select {
 			case b := <-a.reuse:
+				if atEOF {
+					// Return delay
+					b.err = io.EOF
+					b.buf = b.buf[:0]
+					b.offset = 0
+					a.ready <- b
+					return
+				}
 				err := b.read(a.in)
+				// Delay EOF if we have content.
+				if err == io.EOF && len(b.buf) > 0 {
+					atEOF = true
+					err = nil
+					b.err = nil
+				}
 				a.ready <- b
 				if err != nil {
 					return
@@ -488,8 +503,18 @@ func (b *buffer) read(rd io.Reader) (err error) {
 			b.err = err
 		}
 	}()
+
 	var n int
-	n, b.err = rd.Read(b.buf[0:b.size])
+	buf := b.buf[0:b.size]
+	for n < b.size {
+		n2, err := rd.Read(buf)
+		n += n2
+		if err != nil {
+			b.err = err
+			break
+		}
+		buf = buf[n2:]
+	}
 	b.buf = b.buf[0:n]
 	b.offset = 0
 	return b.err

@@ -11,12 +11,7 @@ The readahead object also fulfills the [`io.WriterTo`](https://golang.org/pkg/io
 
 See an introduction: [An Async Read-ahead Package for Go](https://blog.klauspost.com/an-async-read-ahead-package-for-go/)
 
-[![GoDoc][1]][2] [![Build Status][3]][4]
-
-[1]: https://godoc.org/github.com/klauspost/readahead?status.svg
-[2]: https://godoc.org/github.com/klauspost/readahead
-[3]: https://travis-ci.org/klauspost/readahead.svg
-[4]: https://travis-ci.org/klauspost/readahead
+[![Go Reference](https://pkg.go.dev/badge/github.com/klauspost/readahead.svg)](https://pkg.go.dev/github.com/klauspost/readahead) [![Go](https://github.com/klauspost/readahead/actions/workflows/go.yml/badge.svg)](https://github.com/klauspost/readahead/actions/workflows/go.yml)
 
 # usage
 

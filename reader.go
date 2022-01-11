@@ -1,6 +1,6 @@
 // Copyright (c) 2015 Klaus Post, released under MIT License. See LICENSE file.
 
-// The readahead package will do asynchronous read-ahead from an input io.Reader
+// Package readahead will do asynchronous read-ahead from an input io.Reader
 // and make the data available as an io.Reader.
 //
 // This should be fully transparent, except that once an error
@@ -39,9 +39,10 @@ type reader struct {
 	err     error         // If an error has occurred it is here
 	cur     *buffer       // Current buffer being served
 	exited  chan struct{} // Channel is closed been the async reader shuts down
+	bufs    [][]byte
 }
 
-// New returns a reader that will asynchronously read from
+// NewReader returns a reader that will asynchronously read from
 // the supplied reader into 4 buffers of 1MB each.
 //
 // It will start reading from the input at once, maybe even before this
@@ -65,7 +66,7 @@ func NewReader(rd io.Reader) io.ReadCloser {
 	return ret
 }
 
-// New returns a reader that will asynchronously read from
+// NewReadCloser returns a reader that will asynchronously read from
 // the supplied reader into 4 buffers of 1MB each.
 //
 // It will start reading from the input at once, maybe even before this
@@ -90,7 +91,7 @@ func NewReadCloser(rd io.ReadCloser) io.ReadCloser {
 	return ret
 }
 
-// New returns a reader that will asynchronously read from
+// NewReadSeeker returns a reader that will asynchronously read from
 // the supplied reader into 4 buffers of 1MB each.
 //
 // It will start reading from the input at once, maybe even before this
@@ -104,7 +105,7 @@ func NewReadSeeker(rd io.ReadSeeker) ReadSeekCloser {
 	return res
 }
 
-// New returns a reader that will asynchronously read from
+// NewReadSeekCloser returns a reader that will asynchronously read from
 // the supplied reader into 4 buffers of 1MB each.
 //
 // It will start reading from the input at once, maybe even before this
@@ -114,7 +115,7 @@ func NewReadSeeker(rd io.ReadSeeker) ReadSeekCloser {
 // When done use Close() to release the buffers,
 // which will also close the supplied closer.
 func NewReadSeekCloser(rd ReadSeekCloser) ReadSeekCloser {
-	//Not checking for result as the input interface guarantees it's seekable
+	// Not checking for result as the input interface guarantees it's seekable
 	res, _ := NewReadCloser(rd).(ReadSeekCloser)
 	return res
 }
@@ -139,6 +140,38 @@ func NewReaderSize(rd io.Reader, buffers, size int) (res io.ReadCloser, err erro
 		res = a
 	}
 	a.init(rd, buffers, size)
+	return
+}
+
+// NewReaderBuffer returns a reader with a custom number of buffers and size.
+// The buffers and their number
+func NewReaderBuffer(rd io.Reader, buffers [][]byte) (res io.ReadCloser, err error) {
+	sz := 0
+	for _, buf := range buffers {
+		if len(buf) == 0 {
+			return nil, fmt.Errorf("zero size buffer sent")
+		}
+		if sz == 0 {
+			sz = len(buf)
+		}
+		if sz != len(buf) {
+			return nil, fmt.Errorf("buffers should have similar size")
+		}
+	}
+	if len(buffers) == 0 {
+		return nil, fmt.Errorf("number of buffers too small")
+	}
+	if rd == nil {
+		return nil, fmt.Errorf("nil input reader supplied")
+	}
+	a := &reader{}
+	if _, ok := rd.(io.Seeker); ok {
+		res = &seekable{a}
+	} else {
+		res = a
+	}
+	a.initBuffers(rd, buffers, sz)
+
 	return
 }
 
@@ -193,19 +226,30 @@ func NewReadSeekCloserSize(rd ReadSeekCloser, buffers, size int) (res ReadSeekCl
 
 // initialize the reader
 func (a *reader) init(rd io.Reader, buffers, size int) {
+	x := make([]byte, buffers*size)
+	bufs := make([][]byte, buffers)
+	for i := range bufs {
+		bufs[i] = x[i*size : (i+1)*size : (i+1)*size]
+	}
+	a.initBuffers(rd, bufs, size)
+}
+
+// initialize the reader
+func (a *reader) initBuffers(rd io.Reader, buffers [][]byte, size int) {
 	a.in = rd
-	a.ready = make(chan *buffer, buffers)
-	a.reuse = make(chan *buffer, buffers)
+	a.ready = make(chan *buffer, len(buffers))
+	a.reuse = make(chan *buffer, len(buffers))
 	a.exit = make(chan struct{}, 0)
 	a.exited = make(chan struct{}, 0)
-	a.buffers = buffers
+	a.buffers = len(buffers)
 	a.size = size
 	a.cur = nil
 	a.err = nil
+	a.bufs = buffers
 
 	// Create buffers
-	for i := 0; i < buffers; i++ {
-		a.reuse <- newBuffer(size)
+	for _, buf := range buffers {
+		a.reuse <- newBufferBuf(buf)
 	}
 
 	// Start async reader
@@ -360,6 +404,10 @@ type buffer struct {
 
 func newBuffer(size int) *buffer {
 	return &buffer{buf: make([]byte, size), err: nil, size: size}
+}
+
+func newBufferBuf(buf []byte) *buffer {
+	return &buffer{buf: buf, err: nil, size: len(buf)}
 }
 
 // isEmpty returns true is offset is at end of

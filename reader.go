@@ -144,8 +144,11 @@ func NewReaderSize(rd io.Reader, buffers, size int) (res io.ReadCloser, err erro
 }
 
 // NewReaderBuffer returns a reader with a custom number of buffers and size.
-// The buffers and their number
+// All buffers must be the same size.
 func NewReaderBuffer(rd io.Reader, buffers [][]byte) (res io.ReadCloser, err error) {
+	if len(buffers) == 0 {
+		return nil, fmt.Errorf("number of buffers too small")
+	}
 	sz := 0
 	for _, buf := range buffers {
 		if len(buf) == 0 {
@@ -157,9 +160,6 @@ func NewReaderBuffer(rd io.Reader, buffers [][]byte) (res io.ReadCloser, err err
 		if sz != len(buf) {
 			return nil, fmt.Errorf("buffers should have similar size")
 		}
-	}
-	if len(buffers) == 0 {
-		return nil, fmt.Errorf("number of buffers too small")
 	}
 	if rd == nil {
 		return nil, fmt.Errorf("nil input reader supplied")
@@ -198,6 +198,38 @@ func NewReadCloserSize(rc io.ReadCloser, buffers, size int) (res io.ReadCloser, 
 	return
 }
 
+// NewReadCloserBuffer returns a reader with a custom number of buffers and size.
+// All buffers must be the same size.
+func NewReadCloserBuffer(rc io.ReadCloser, buffers [][]byte) (res io.ReadCloser, err error) {
+	if len(buffers) == 0 {
+		return nil, fmt.Errorf("number of buffers too small")
+	}
+	sz := 0
+	for _, buf := range buffers {
+		if len(buf) == 0 {
+			return nil, fmt.Errorf("zero size buffer sent")
+		}
+		if sz == 0 {
+			sz = len(buf)
+		}
+		if sz != len(buf) {
+			return nil, fmt.Errorf("buffers should have similar size")
+		}
+	}
+
+	if rc == nil {
+		return nil, fmt.Errorf("nil input reader supplied")
+	}
+	a := &reader{closer: rc}
+	if _, ok := rc.(io.Seeker); ok {
+		res = &seekable{a}
+	} else {
+		res = a
+	}
+	a.initBuffers(rc, buffers, sz)
+	return
+}
+
 // NewReadSeekerSize returns a reader with a custom number of buffers and size.
 // buffers is the number of queued buffers and size is the size of each
 // buffer in bytes.
@@ -216,6 +248,18 @@ func NewReadSeekerSize(rd io.ReadSeeker, buffers, size int) (res ReadSeekCloser,
 // buffer in bytes.
 func NewReadSeekCloserSize(rd ReadSeekCloser, buffers, size int) (res ReadSeekCloser, err error) {
 	reader, err := NewReadCloserSize(rd, buffers, size)
+	if err != nil {
+		return nil, err
+	}
+	//Not checking for result as the input interface guarantees it's seekable
+	res, _ = reader.(ReadSeekCloser)
+	return
+}
+
+// NewReadSeekCloserBuffer returns a reader with a custom number of buffers and size.
+// All buffers must be the same size.
+func NewReadSeekCloserBuffer(rd ReadSeekCloser, buffers [][]byte) (res ReadSeekCloser, err error) {
+	reader, err := NewReadCloserBuffer(rd, buffers)
 	if err != nil {
 		return nil, err
 	}
@@ -338,7 +382,7 @@ func (a *seekable) Seek(offset int64, whence int) (res int64, err error) {
 	//Seek the actual Seeker
 	if res, err = seeker.Seek(offset, whence); err == nil {
 		//If the seek was successful, reinitalize ourselves (with the new position).
-		a.init(a.in, a.buffers, a.size)
+		a.initBuffers(a.in, a.bufs, a.size)
 	}
 	return
 }

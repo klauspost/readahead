@@ -402,10 +402,13 @@ func (a *seekable) Seek(offset int64, whence int) (res int64, err error) {
 		//If need to seek based on current position, take into consideration the bytes we read but the consumer
 		//doesn't know about
 		err = nil
-		for a.cur != nil {
+		for {
 			if err = a.fill(); err == nil && a.cur != nil {
 				offset -= int64(len(a.cur.buffer()))
 				a.cur.offset = len(a.cur.buf)
+			}
+			if a.cur == nil {
+				break
 			}
 		}
 	}

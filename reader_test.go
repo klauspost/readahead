@@ -229,14 +229,47 @@ func TestSeeker(t *testing.T) {
 			t.Fatal("seeker and control reader mismatch")
 		}
 
-		pos, err = ar.Seek(int64(i), io.SeekCurrent)
+		pos, err = ar.Seek(int64(0), io.SeekCurrent)
+		pos, err = ar.Seek(int64(0), io.SeekCurrent)
 		if err != nil {
 			t.Fatal("error when seeking:", err)
 		}
-		if pos != int64(dstSize+i+1) {
-			t.Fatal("unexpected position, expected ", dstSize+i, ", got ", pos)
+		if pos != int64(dstSize+1) {
+			t.Fatal("unexpected position, expected ", dstSize+1, ", got ", pos)
 		}
-		control.Read(make([]byte, int64(i))) //Emulate seeking to offset 1 from current pos
+
+		offset := int64(i)
+		expected_pos := int64(dstSize) + offset + 1
+		pos, err = ar.Seek(offset, io.SeekCurrent)
+		if err != nil {
+			t.Fatal("error when seeking:", err)
+		}
+		if pos != expected_pos {
+			t.Fatal("unexpected position, expected ", expected_pos, ", got ", pos)
+		}
+		control.Read(make([]byte, offset)) //Emulate seeking to offset from current pos
+		control.Read(controlDst)
+		n, err = ar.Read(dst)
+		if err != nil {
+			t.Fatal("error when reading:", err)
+		}
+		if n != dstSize {
+			t.Fatal("unexpected length, expected ", dstSize, ", got ", n)
+		}
+		if string(dst) != string(controlDst) {
+			t.Fatal("seeker and control reader mismatch")
+		}
+
+		offset *= 2
+		expected_pos += int64(dstSize) + offset
+		pos, err = ar.Seek(offset, io.SeekCurrent)
+		if err != nil {
+			t.Fatal("error when seeking:", err)
+		}
+		if pos != int64(expected_pos) {
+			t.Fatal("unexpected position, expected ", expected_pos, ", got ", pos)
+		}
+		control.Read(make([]byte, offset)) //Emulate seeking to offset from current pos
 		control.Read(controlDst)
 		n, err = ar.Read(dst)
 		if err != nil {

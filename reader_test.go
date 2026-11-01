@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"strings"
 	"sync"
 	"testing"
 	"testing/iotest"
+	"time"
 
 	"github.com/klauspost/readahead"
 )
@@ -798,4 +800,142 @@ func Example() {
 
 	fmt.Println(dst.String())
 	// Output: Example data
+}
+
+// readStartedConn signals when the background reader enters a blocking read.
+type readStartedConn struct {
+	net.Conn
+	started chan struct{}
+	once    sync.Once
+}
+
+func (c *readStartedConn) Read(p []byte) (int, error) {
+	c.once.Do(func() { close(c.started) })
+	return c.Conn.Read(p)
+}
+
+func TestReadCloserCloseUnblocksRead(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		new  func(io.ReadCloser) (io.ReadCloser, error)
+	}{
+		{"size", func(c io.ReadCloser) (io.ReadCloser, error) {
+			return readahead.NewReadCloserSize(c, 2, 8)
+		}},
+		{"buffers", func(c io.ReadCloser) (io.ReadCloser, error) {
+			return readahead.NewReadCloserBuffer(c, makeBuffers(2, 8))
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			conn, peer := net.Pipe()
+			defer conn.Close()
+			defer peer.Close()
+			input := &readStartedConn{Conn: conn, started: make(chan struct{})}
+			r, err := tc.new(input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			<-input.started
+			closed := make(chan error, 1)
+			go func() { closed <- r.Close() }()
+			select {
+			case err := <-closed:
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(time.Second):
+				// Release the blocked read even when the regression fails.
+				conn.Close()
+				<-closed
+				t.Fatal("Close did not unblock the underlying read")
+			}
+		})
+	}
+}
+
+func TestReadCloserClosePreservesReadError(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		new  func(io.ReadCloser) (io.ReadCloser, error)
+	}{
+		{"size", func(c io.ReadCloser) (io.ReadCloser, error) {
+			return readahead.NewReadCloserSize(c, 2, 8)
+		}},
+		{"buffers", func(c io.ReadCloser) (io.ReadCloser, error) {
+			return readahead.NewReadCloserBuffer(c, makeBuffers(2, 8))
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, readErr := range []error{io.EOF, errors.New("input read error")} {
+				t.Run(readErr.Error(), func(t *testing.T) {
+					input := &testCloser{Reader: dummyReader{readFN: func([]byte) (int, error) {
+						return 0, readErr
+					}}}
+					r, err := tc.new(input)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if _, err := r.Read(make([]byte, 1)); err != readErr {
+						t.Fatalf("Read before Close: got %v, want %v", err, readErr)
+					}
+					for i := 1; i <= 3; i++ {
+						if err := r.Close(); err != nil {
+							t.Fatal(err)
+						}
+						if _, err := r.Read(make([]byte, 1)); err != readErr {
+							t.Fatalf("Read after Close %d: got %v, want %v", i, err, readErr)
+						}
+						if _, err := r.(io.WriterTo).WriteTo(ioutil.Discard); err != readErr {
+							t.Fatalf("WriteTo after Close %d: got %v, want %v", i, err, readErr)
+						}
+						if input.closed != 1 {
+							t.Fatalf("Close %d: underlying close count got %d, want 1", i, input.closed)
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestReadCloserCloseWithForegroundRead(t *testing.T) {
+	for _, writeTo := range []bool{false, true} {
+		t.Run(fmt.Sprint("WriteTo=", writeTo), func(t *testing.T) {
+			conn, peer := net.Pipe()
+			defer conn.Close()
+			defer peer.Close()
+			input := &readStartedConn{Conn: conn, started: make(chan struct{})}
+			r, err := readahead.NewReadCloserSize(input, 2, 8)
+			if err != nil {
+				t.Fatal(err)
+			}
+			<-input.started
+			started := make(chan struct{})
+			result := make(chan error, 1)
+			go func() {
+				close(started)
+				var err error
+				if writeTo {
+					_, err = r.(io.WriterTo).WriteTo(ioutil.Discard)
+				} else {
+					_, err = r.Read(make([]byte, 1))
+				}
+				result <- err
+			}()
+			<-started
+			for i := 0; i < 3; i++ {
+				if err := r.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			select {
+			case err := <-result:
+				if err != io.ErrClosedPipe {
+					t.Fatalf("foreground operation: got %v, want %v", err, io.ErrClosedPipe)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("foreground operation did not unblock")
+			}
+		})
+	}
 }
